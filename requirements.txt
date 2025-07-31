@@ -1,9 +1,7 @@
 flask
 requests
-kucoin-python
-setuptools
 pandas
+numpy
+ta
+kucoin-python
 gunicorn
-ta
-ta
-ta
