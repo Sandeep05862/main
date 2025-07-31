@@ -1,6 +1,2 @@
-kucoin-python
 flask
-<<<<<<< HEAD
 kucoin-python
-=======
->>>>>>> b2c0e0f (Switched to kucoin-python)
