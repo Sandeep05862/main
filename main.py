@@ -7,11 +7,15 @@ import pkg_resources
 from flask import Flask
 from kucoin.client import Market, Trade
 
+app = Flask(__name__)  # ✅ THIS LINE IS NEEDED HERE
+
+# Load KuCoin credentials from environment
 KUCOIN_API_KEY = os.getenv("KUCOIN_API_KEY")
 KUCOIN_SECRET = os.getenv("KUCOIN_SECRET")
 KUCOIN_PASSPHRASE = os.getenv("KUCOIN_API_PASSPHRASE")
 
-trade = Trade(key=KUCOIN_API_KEY, secret=KUCOIN_SECRET, passphrase=KUCOIN_PASSPHRASE)
+# Initialize KuCoin client
+client = Trade(key=KUCOIN_API_KEY, secret=KUCOIN_SECRET, passphrase=KUCOIN_PASSPHRASE)
 market = Market()
 
 # Background function for price checking
@@ -21,10 +25,9 @@ def monitor_price():
             ticker = market.get_ticker("BTC-USDT")
             price = float(ticker["price"])
             print(f"Current BTC/USDT price: {price}")
-            # Add your RSI or volume alert logic here
         except Exception as e:
             print(f"[ERROR] {e}")
-        time.sleep(10)  # check every 10 seconds
+        time.sleep(10)
 
 # Start background thread
 threading.Thread(target=monitor_price, daemon=True).start()
