@@ -1,10 +1,11 @@
-from flask import Flask
 import os
-import threading
 import time
-from kucoin.client import Client
+import threading
 import requests
 import pkg_resources
+
+from flask import Flask
+from kucoin.client import Market
 
 # Load KuCoin credentials from environment variables
 KUCOIN_API_KEY = os.getenv("KUCOIN_API_KEY")
