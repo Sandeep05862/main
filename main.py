@@ -5,17 +5,13 @@ import requests
 import pkg_resources
 
 from flask import Flask
-from kucoin.client import Client, Market
+from kucoin.client import Market, Trade
 
-app = Flask(__name__)
-
-# Load KuCoin credentials from environment
 KUCOIN_API_KEY = os.getenv("KUCOIN_API_KEY")
 KUCOIN_SECRET = os.getenv("KUCOIN_SECRET")
 KUCOIN_PASSPHRASE = os.getenv("KUCOIN_API_PASSPHRASE")
 
-# Initialize KuCoin client
-client = Client(KUCOIN_API_KEY, KUCOIN_SECRET, KUCOIN_PASSPHRASE)
+client = Trade(key=KUCOIN_API_KEY, secret=KUCOIN_SECRET, passphrase=KUCOIN_PASSPHRASE)
 market = Market()
 
 # Background function for price checking
