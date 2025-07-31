@@ -11,7 +11,7 @@ KUCOIN_API_KEY = os.getenv("KUCOIN_API_KEY")
 KUCOIN_SECRET = os.getenv("KUCOIN_SECRET")
 KUCOIN_PASSPHRASE = os.getenv("KUCOIN_API_PASSPHRASE")
 
-client = Trade(key=KUCOIN_API_KEY, secret=KUCOIN_SECRET, passphrase=KUCOIN_PASSPHRASE)
+trade = Trade(key=KUCOIN_API_KEY, secret=KUCOIN_SECRET, passphrase=KUCOIN_PASSPHRASE)
 market = Market()
 
 # Background function for price checking
