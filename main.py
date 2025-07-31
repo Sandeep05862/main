@@ -85,8 +85,11 @@ def check_signal():
 # Flask route
 @app.route("/")
 def home():
-    result = check_signal()
-    return result
+    try:
+        result = check_signal()
+        return result
+    except Exception as e:
+        return f"❌ Error occurred: {e}"
 
 # Start Flask app
 if __name__ == "__main__":
