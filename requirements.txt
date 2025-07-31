@@ -3,3 +3,4 @@ requests
 kucoin-python
 setuptools
 pandas
+gunicorn
