@@ -4,6 +4,7 @@ import threading
 import time
 from kucoin.client import Client
 import requests
+import pkg_resources
 
 # Load KuCoin credentials from environment variables
 KUCOIN_API_KEY = os.getenv("KUCOIN_API_KEY")
