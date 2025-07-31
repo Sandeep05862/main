@@ -5,54 +5,37 @@ import requests
 import pkg_resources
 
 from flask import Flask
-from kucoin.client import Market
+from kucoin.client import Client, Market
 
-# Load KuCoin credentials from environment variables
+app = Flask(__name__)
+
+# Load KuCoin credentials from environment
 KUCOIN_API_KEY = os.getenv("KUCOIN_API_KEY")
 KUCOIN_SECRET = os.getenv("KUCOIN_SECRET")
-KUCOIN_PASSPHRASE = os.getenv("KUCOIN_PASSPHRASE")
-
-# Load Telegram credentials from environment variables
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+KUCOIN_PASSPHRASE = os.getenv("KUCOIN_API_PASSPHRASE")
 
 # Initialize KuCoin client
 client = Client(KUCOIN_API_KEY, KUCOIN_SECRET, KUCOIN_PASSPHRASE)
+market = Market()
 
-# Send message to Telegram
-def send_telegram_message(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
-    try:
-        response = requests.post(url, data=payload)
-        if response.status_code != 200:
-            print("Telegram Error:", response.status_code, response.text)
-    except Exception as e:
-        print("Telegram Exception:", e)
-
-# Bot logic
-def run_bot():
+# Background function for price checking
+def monitor_price():
     while True:
         try:
-            ticker = client.get_ticker('BTC-USDT')
-            price = ticker['price']
-            send_telegram_message(f"🟢 BTC/USDT price: {price}")
-            print(f"Price sent: {price}")
+            ticker = market.get_ticker("BTC-USDT")
+            price = float(ticker["price"])
+            print(f"Current BTC/USDT price: {price}")
+            # Add your RSI or volume alert logic here
         except Exception as e:
-            print("KuCoin Error:", e)
-            send_telegram_message(f"❌ Error fetching price: {e}")
-        time.sleep(60)
+            print(f"[ERROR] {e}")
+        time.sleep(10)  # check every 10 seconds
 
-# Flask app setup
-app = Flask(__name__)
+# Start background thread
+threading.Thread(target=monitor_price, daemon=True).start()
 
-@app.route('/')
+@app.route("/")
 def home():
-    return 'SanKuCoin_bot is running in background!'
+    return "KuCoin bot running!"
 
-if __name__ == '__main__':
-    bot_thread = threading.Thread(target=run_bot)
-    bot_thread.start()
-
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
