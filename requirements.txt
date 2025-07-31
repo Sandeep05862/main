@@ -4,3 +4,4 @@ kucoin-python
 setuptools
 pandas
 gunicorn
+ta
