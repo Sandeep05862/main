@@ -93,5 +93,8 @@ def home():
 
 # Start Flask app
 if __name__ == "__main__":
-    send_telegram_message("✅ Telegram bot deployed and working on Render!")
+    send_telegram_message("✅ Telegram bot deployed and working on Render!"
+import os
+
+if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
