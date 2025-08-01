@@ -25,19 +25,16 @@ def send_telegram_message(message):
         print("Telegram Error:", e)
 
 # Fetch KuCoin klines with correct syntax
-def fetch_klines(symbol="BTC-USDT", interval="1min", limit=100, retries=3, wait=10):
+def fetch_klines(symbol="BTC-USDT", interval="1min", limit=100, retries=3, wait=3):
     for attempt in range(retries):
         try:
-            end_time = int(time.time())
-            start_time = end_time - limit * 60  # 100 minutes ago
-            klines = client.get_kline(symbol, interval, startAt=start_time, endAt=end_time)
-
+            klines = client.get_kline(symbol=symbol, kline_type=interval)
             df = pd.DataFrame(klines, columns=["time", "open", "close", "high", "low", "volume", "turnover"])
-            df["time"] = pd.to_datetime(pd.to_numeric(df["time"]), unit="s")  # Improved line  # Note: seconds, not ms
+            df["time"] = pd.to_datetime(df["time"], unit="s")
             df[["open", "close", "high", "low", "volume"]] = df[["open", "close", "high", "low", "volume"]].astype(float)
-
+            
             if len(df) < 30:
-                print(f"Attempt {attempt+1}: Data not sufficient. Retrying in {wait} seconds...")
+                print(f"Attempt {attempt+1}: Data not sufficient. Retrying...")
                 time.sleep(wait)
                 continue
 
