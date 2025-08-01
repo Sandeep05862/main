@@ -35,8 +35,8 @@ def fetch_klines(symbol="BTC-USDT", interval="1min", limit=100, retries=3, wait=
         try:
             klines = client.get_kline(symbol=symbol, kline_type=interval)
             df = pd.DataFrame(klines, columns=["time", "open", "close", "high", "low", "volume", "turnover"])
-            df["time"] = pd.to_datetime(df["time"], unit="s")
-            df[["open", "close", "high", "low", "volume"]] = df[["open", "close", "high", "low", "volume"]].astype(float)
+df["time"] = pd.to_datetime(pd.to_numeric(df["time"]), unit="s")
+df = df.astype(float)
             
             if len(df) < 30:
                 print(f"Attempt {attempt+1}: Data not sufficient. Retrying...")
