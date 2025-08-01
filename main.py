@@ -11,8 +11,13 @@ from ta.momentum import RSIIndicator
 app = Flask(__name__)
 
 # KuCoin client
-client = Market()
+from kucoin.client import Market
 
+api_key = os.getenv("KUCOIN_API_KEY")
+api_secret = os.getenv("KUCOIN_API_SECRET")
+api_passphrase = os.getenv("KUCOIN_API_PASSPHRASE")
+
+client = Market(api_key, api_secret, api_passphrase)
 # Telegram message sender
 def send_telegram_message(message):
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
