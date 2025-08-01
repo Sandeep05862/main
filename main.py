@@ -3,100 +3,134 @@ import time
 import requests
 import pandas as pd
 import numpy as np
+from kucoin.client import Market
 from flask import Flask
-from kucoin.client import Market
+import threading
 from datetime import datetime
-from ta.momentum import RSIIndicator
 
-app = Flask(__name__)
-
-# KuCoin client
-from kucoin.client import Market
-
+# KuCoin API credentials
 api_key = os.getenv("KUCOIN_API_KEY")
 api_secret = os.getenv("KUCOIN_API_SECRET")
 api_passphrase = os.getenv("KUCOIN_API_PASSPHRASE")
 
-client = Market(api_key, api_secret, api_passphrase)
-# Telegram message sender
+# Telegram bot credentials
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+# Create KuCoin Market client
+client = Market()
+
+# Flask App for Render health check
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
 def send_telegram_message(message):
-    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": message}
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    data = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
     try:
-        requests.post(url, data=payload)
+        requests.post(url, data=data)
     except Exception as e:
         print("Telegram Error:", e)
 
-# Fetch KuCoin klines with correct syntax
-def fetch_klines(symbol="BTC-USDT", interval="1min", limit=100, retries=3, wait=3):
-    for attempt in range(retries):
-        try:
-            klines = client.get_kline(symbol=symbol, kline_type=interval)
-            df = pd.DataFrame(klines, columns=["time", "open", "close", "high", "low", "volume", "turnover"])
-df["time"] = pd.to_datetime(pd.to_numeric(df["time"]), unit="s")
-df = df.astype(float)
-            
-            if len(df) < 30:
-                print(f"Attempt {attempt+1}: Data not sufficient. Retrying...")
-                time.sleep(wait)
-                continue
-
-            return df
-
-        except Exception as e:
-            print(f"Attempt {attempt+1}: Error fetching data - {e}")
-            time.sleep(wait)
-
-    print("❌ Data still insufficient after retries.")
-    return None
-
-# Heikin Ashi Calculation
-def heikin_ashi(df):
+def get_heikin_ashi(df):
     ha_df = df.copy()
-    ha_df["HA_Close"] = (df["open"] + df["high"] + df["low"] + df["close"]) / 4
-    ha_open = [(df["open"].iloc[0] + df["close"].iloc[0]) / 2]
-    for i in range(1, len(df)):
-        ha_open.append((ha_open[i-1] + ha_df["HA_Close"].iloc[i-1]) / 2)
-    ha_df["HA_Open"] = ha_open
-    ha_df["HA_High"] = ha_df[["HA_Open", "HA_Close", "high"]].max(axis=1)
-    ha_df["HA_Low"] = ha_df[["HA_Open", "HA_Close", "low"]].min(axis=1)
-    return ha_df
+    ha_df['close'] = (df['open'] + df['high'] + df['low'] + df['close']) / 4
+    ha_df['open'] = (df['open'].shift(1) + df['close'].shift(1)) / 2
+    ha_df['high'] = df[['high', 'open', 'close']].max(axis=1)
+    ha_df['low'] = df[['low', 'open', 'close']].min(axis=1)
+    return ha_df.dropna()
 
-# Strategy signal
-def check_signal():
-    df = fetch_klines()
-    if df is None or len(df) < 30:
-        return "📉 Data not sufficient"
+def calculate_rsi(df, period=14):
+    delta = df['close'].diff()
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
+    avg_gain = pd.Series(gain).rolling(window=period).mean()
+    avg_loss = pd.Series(loss).rolling(window=period).mean()
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    return pd.Series(rsi, index=df.index)
 
-    ha_df = heikin_ashi(df)
-    rsi = RSIIndicator(close=df["close"], window=14).rsi()
-    volume = df["volume"]
-
-    rsi_latest = rsi.iloc[-1]
-    rsi_prev = rsi.iloc[-2]
-    vol_latest = volume.iloc[-1]
-    vol_prev = volume.iloc[-2]
-    ha_green = ha_df["HA_Close"].iloc[-1] > ha_df["HA_Open"].iloc[-1]
-
-    if rsi_prev < 30 and rsi_latest > 30 and vol_latest > vol_prev and ha_green:
-        signal = "✅ BUY Signal from RSI + Volume + Heikin Ashi"
-        send_telegram_message(signal)
-        return signal
-    else:
-        return "📊 No valid signal right now."
-
-# Flask route
-@app.route("/")
-def home():
+def fetch_klines(symbol, interval="5min", limit=100):
     try:
-        result = check_signal()
-        return result
+        data = client.get_kline(symbol=symbol, kline_type=interval)
+        df = pd.DataFrame(data, columns=[
+            "time", "open", "close", "high", "low", "volume", "turnover"])
+        df["time"] = pd.to_datetime(pd.to_numeric(df["time"]), unit="s")
+        df[["open", "close", "high", "low", "volume"]] = df[[
+            "open", "close", "high", "low", "volume"]].astype(float)
+        return df
     except Exception as e:
-        return f"❌ Error occurred: {e}"
+        print(f"Fetch Error for {symbol}: {e}")
+        return None
 
-# Start Flask app and notify Telegram
+def calculate_signals(symbol):
+    df = fetch_klines(symbol)
+    if df is None or len(df) < 20:
+        return
+
+    df = get_heikin_ashi(df)
+    df["rsi"] = calculate_rsi(df)
+
+    latest = df.iloc[-1]
+    prev = df.iloc[-2]
+
+    signal = None
+    if prev["rsi"] < 30 and latest["rsi"] > 30 and latest["close"] > prev["close"]:
+        signal = "BUY"
+    elif prev["rsi"] > 70 and latest["rsi"] < 70 and latest["close"] < prev["close"]:
+        signal = "SELL"
+
+    if signal:
+        price = latest["close"]
+        qty = round(25 / price, 3)
+        timestamp = datetime.utcnow()
+
+        if signal == "BUY":
+            sl = round(df["low"].rolling(5).min().iloc[-1], 4)
+            tp = round(price * 1.03, 4)
+            msg = f"""📊 {symbol}
+🟢 Signal: BUY
+💰 Price: {price}
+🎯 Qty: {qty}
+❌ SL: {sl}
+✅ TP: {tp}
+🕒 Time: {timestamp}"""
+        else:
+            sl = round(df["high"].rolling(5).max().iloc[-1], 4)
+            tp = round(price * 0.97, 4)
+            msg = f"""📊 {symbol}
+🔴 Signal: SELL
+💰 Price: {price}
+🎯 Qty: {qty}
+❌ SL: {sl}
+✅ TP: {tp}
+🕒 Time: {timestamp}"""
+
+        send_telegram_message(msg)
+
+def get_top_volume_symbols():
+    try:
+        tickers = client.get_ticker()
+        sorted_tickers = sorted(
+            tickers["ticker"], key=lambda x: float(x["volValue"]), reverse=True)
+        top_symbols = [t["symbol"] for t in sorted_tickers if t["symbol"].endswith("USDT")]
+        return top_symbols[:10]
+    except Exception as e:
+        print("Volume Error:", e)
+        return []
+
+def run_bot():
+    while True:
+        symbols = get_top_volume_symbols()
+        for sym in symbols:
+            calculate_signals(sym)
+            time.sleep(2)
+        time.sleep(60 * 5)
+
+# Start Flask and Bot Thread
 if __name__ == "__main__":
-    send_telegram_message("✅ Telegram bot deployed and working on Render!")
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    threading.Thread(target=run_bot, daemon=True).start()
+    app.run(host="0.0.0.0", port=10000)
