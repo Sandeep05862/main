@@ -33,7 +33,7 @@ def fetch_klines(symbol="BTC-USDT", interval="1min", limit=100, retries=3, wait=
             klines = client.get_kline(symbol, interval, startAt=start_time, endAt=end_time)
 
             df = pd.DataFrame(klines, columns=["time", "open", "close", "high", "low", "volume", "turnover"])
-            df["time"] = pd.to_datetime(df["time"], unit="s")  # Note: seconds, not ms
+            df["time"] = pd.to_datetime(pd.to_numeric(df["time"]), unit="s")  # Improved line  # Note: seconds, not ms
             df[["open", "close", "high", "low", "volume"]] = df[["open", "close", "high", "low", "volume"]].astype(float)
 
             if len(df) < 30:
