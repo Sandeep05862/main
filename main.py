@@ -24,14 +24,17 @@ def send_telegram_message(message):
     except Exception as e:
         print("Telegram Error:", e)
 
-# Fetch KuCoin klines with retry on insufficient data
+# Fetch KuCoin klines with correct syntax
 def fetch_klines(symbol="BTC-USDT", interval="1min", limit=100, retries=3, wait=10):
     for attempt in range(retries):
         try:
-            klines = client.get_kline(symbol, interval, limit)
+            end_time = int(time.time())
+            start_time = end_time - limit * 60  # 100 minutes ago
+            klines = client.get_kline(symbol, interval, startAt=start_time, endAt=end_time)
+
             df = pd.DataFrame(klines, columns=["time", "open", "close", "high", "low", "volume", "turnover"])
-            df["time"] = pd.to_datetime(df["time"], unit="ms")
-            df = df.astype(float)
+            df["time"] = pd.to_datetime(df["time"], unit="s")  # Note: seconds, not ms
+            df[["open", "close", "high", "low", "volume"]] = df[["open", "close", "high", "low", "volume"]].astype(float)
 
             if len(df) < 30:
                 print(f"Attempt {attempt+1}: Data not sufficient. Retrying in {wait} seconds...")
@@ -51,9 +54,9 @@ def fetch_klines(symbol="BTC-USDT", interval="1min", limit=100, retries=3, wait=
 def heikin_ashi(df):
     ha_df = df.copy()
     ha_df["HA_Close"] = (df["open"] + df["high"] + df["low"] + df["close"]) / 4
-    ha_open = [(df["open"][0] + df["close"][0]) / 2]
+    ha_open = [(df["open"].iloc[0] + df["close"].iloc[0]) / 2]
     for i in range(1, len(df)):
-        ha_open.append((ha_open[i-1] + ha_df["HA_Close"][i-1]) / 2)
+        ha_open.append((ha_open[i-1] + ha_df["HA_Close"].iloc[i-1]) / 2)
     ha_df["HA_Open"] = ha_open
     ha_df["HA_High"] = ha_df[["HA_Open", "HA_Close", "high"]].max(axis=1)
     ha_df["HA_Low"] = ha_df[["HA_Open", "HA_Close", "low"]].min(axis=1)
