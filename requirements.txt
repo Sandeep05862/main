@@ -7,14 +7,4 @@ kucoin-python
 gunicorn
 setuptools
 requests
-pytz
-flask
-requests
-pandas
-numpy
-ta==0.11.0
-kucoin-python
-gunicorn
-setuptools
-pytz
 https://github.com/sammchardy/python-kucoin-futures/archive/refs/heads/main.zip
