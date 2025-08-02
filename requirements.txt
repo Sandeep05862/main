@@ -8,4 +8,4 @@ gunicorn
 setuptools
 requests
 pytz
-https://github.com/sammchardy/python-kucoin-futures/archive/refs/heads/master.zip
+https://github.com/sammchardy/python-kucoin-futures/archive/refs/heads/main.zip
