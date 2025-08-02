@@ -74,12 +74,22 @@ def fetch_klines(symbol, interval):
         print(f"Error fetching {symbol}: {e}")
         return None
 
-# 🔝 Get top 10 coins
 def get_top_10_symbols():
-    tickers = client.get_all_tickers()["ticker"]
-    sorted_tickers = sorted(tickers, key=lambda x: float(x["volValue"]), reverse=True)
-    top_symbols = [t["symbol"] for t in sorted_tickers if "-USDT" in t["symbol"]][:10]
-    return top_symbols
+    try:
+        response = client.get_all_tickers()
+        print("KuCoin Ticker Response:", response)  # Debug के लिए
+
+        if "ticker" in response:
+            tickers = response["ticker"]
+            sorted_tickers = sorted(tickers, key=lambda x: float(x["volValue"]), reverse=True)
+            top_symbols = [t["symbol"] for t in sorted_tickers if "-USDT" in t["symbol"]][:10]
+            return top_symbols
+        else:
+            print("❌ 'ticker' key not found in response.")
+            return []
+    except Exception as e:
+        print(f"❌ Error in get_top_10_symbols(): {e}")
+        return []
 
 # 🔁 Main loop
 def run_bot():
