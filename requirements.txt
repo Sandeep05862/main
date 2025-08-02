@@ -7,4 +7,4 @@ kucoin-python
 gunicorn
 setuptools
 pytz
-git+https://github.com/dev-gokul/python-kucoin-futures.git
+kucoin-futures==0.1.5
