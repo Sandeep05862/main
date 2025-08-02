@@ -6,5 +6,5 @@ ta==0.11.0
 kucoin-python
 gunicorn
 setuptools
-requests
-https://github.com/sammchardy/python-kucoin-futures/archive/refs/heads/main.zip
+pytz
+https://github.com/sammchardy/python-kucoin-futures/archive/refs/heads/dev.zip
