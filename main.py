@@ -1,126 +1,132 @@
 import os
-import time
 import requests
 import pandas as pd
+import time
+from datetime import datetime
 from kucoin.client import Market
-from flask import Flask
+from ta.trend import EMAIndicator
 from ta.momentum import RSIIndicator
-from ta.trend import SMAIndicator
 
-# 🔐 API Keys from Environment (Render में सेट करें)
-api_key = os.getenv("KUCOIN_API_KEY")
-api_secret = os.getenv("KUCOIN_API_SECRET")
-api_passphrase = os.getenv("KUCOIN_API_PASSPHRASE")
-bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-chat_id = os.getenv("TELEGRAM_CHAT_ID")
+# 🔐 Environment variables
+KUCOIN_API_KEY = os.getenv("KUCOIN_API_KEY")
+KUCOIN_API_SECRET = os.getenv("KUCOIN_API_SECRET")
+KUCOIN_API_PASSPHRASE = os.getenv("KUCOIN_API_PASSPHRASE")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-client = Market(api_key, api_secret, api_passphrase)
-app = Flask(__name__)
+# 📈 KuCoin market client
+client = Market()
 
-# 📩 Telegram Function
-def send_telegram_message(message):
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    requests.post(url, data={"chat_id": chat_id, "text": message})
+# 📩 Telegram alerts
+def send_telegram_alert(symbol, signal_type, price, qty, sl, tp):
+    emoji = "🟢" if signal_type == "BUY" else "🔴"
+    message = f"""
+📊 {symbol}
+{emoji} Signal: {signal_type}
+💰 Price: {price}
+🎯 Qty: {qty}
+❌ SL: {sl}
+✅ TP: {tp}
+🕒 Time: {datetime.now()}
+"""
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": message})
 
-# 📊 Heikin Ashi calculation
+# 🔁 Heikin Ashi calculation
 def heikin_ashi(df):
-    df['HA_close'] = (df['open'] + df['high'] + df['low'] + df['close']) / 4
-    df['HA_open'] = df['open'].copy()
+    ha_df = df.copy()
+    ha_df['HA_Close'] = (df['open'] + df['high'] + df['low'] + df['close']) / 4
+    ha_open = [(df['open'][0] + df['close'][0]) / 2]
     for i in range(1, len(df)):
-        df.loc[i, 'HA_open'] = (df.loc[i-1, 'HA_open'] + df.loc[i-1, 'HA_close']) / 2
+        ha_open.append((ha_open[i-1] + ha_df['HA_Close'][i-1]) / 2)
+    ha_df['HA_Open'] = ha_open
+    return ha_df
+
+# 🧠 Strategy check
+def check_signal(df):
+    rsi = RSIIndicator(df['close'], window=14).rsi()
+    df['rsi'] = rsi
+    df['ema7'] = EMAIndicator(df['close'], window=7).ema_indicator()
+    df['ema21'] = EMAIndicator(df['close'], window=21).ema_indicator()
+    df['volume_avg'] = df['volume'].rolling(window=5).mean()
+
+    if (
+        df['ema7'].iloc[-1] > df['ema21'].iloc[-1] and
+        df['rsi'].iloc[-1] < 70 and
+        df['volume'].iloc[-1] > df['volume_avg'].iloc[-1]
+    ):
+        return "BUY"
+    elif (
+        df['ema7'].iloc[-1] < df['ema21'].iloc[-1] and
+        df['rsi'].iloc[-1] > 30 and
+        df['volume'].iloc[-1] > df['volume_avg'].iloc[-1]
+    ):
+        return "SELL"
+    return None
+
+# ⬇️ Fetch candle data
+def fetch_ohlcv(symbol, interval, limit=100):
+    raw = client.get_kline(symbol, interval, limit=limit)
+    df = pd.DataFrame(raw, columns=['time', 'open', 'close', 'high', 'low', 'volume', 'turnover'])
+    df["time"] = pd.to_datetime(pd.to_numeric(df["time"]), unit="ms")
+    df = df.astype({"open": "float", "high": "float", "low": "float", "close": "float", "volume": "float"})
     return df
 
-# 🔁 Signal check
-def check_signal(df):
-    rsi = RSIIndicator(close=df['close'], window=14).rsi()
-    ma7 = SMAIndicator(close=df['close'], window=7).sma_indicator()
-    ma21 = SMAIndicator(close=df['close'], window=21).sma_indicator()
+# 🎯 Calculate SL & TP
+def calculate_sl_tp(df, direction):
+    if direction == "BUY":
+        sl = df["low"].iloc[-5:-1].min()
+        tp = df["close"].iloc[-1] + (df["close"].iloc[-1] - sl) * 1.5
+    else:
+        sl = df["high"].iloc[-5:-1].max()
+        tp = df["close"].iloc[-1] - (sl - df["close"].iloc[-1]) * 1.5
+    return round(sl, 4), round(tp, 4)
 
-    last_rsi = rsi.iloc[-1]
-    vol = df['volume'].iloc[-1]
+# 💰 Quantity calculation (20x leverage, $10)
+def calculate_qty(price):
+    position_usd = 10 * 20  # leverage
+    qty = position_usd / price
+    return round(qty, 3)
 
-    buy = ma7.iloc[-2] < ma21.iloc[-2] and ma7.iloc[-1] > ma21.iloc[-1] and last_rsi < 30
-    sell = ma7.iloc[-2] > ma21.iloc[-2] and ma7.iloc[-1] < ma21.iloc[-1] and last_rsi > 70
-
-    return "BUY" if buy else "SELL" if sell else None
-
-# 🎯 Signal detail + auto SL/TP
-def trade_details(symbol, signal, price):
-    qty = round(10 / price, 3)  # $10 position
-    sl = round(price * 0.98, 4) if signal == "BUY" else round(price * 1.02, 4)
-    tp = round(price * 1.03, 4) if signal == "BUY" else round(price * 0.97, 4)
-    time_now = pd.Timestamp.now()
-
-    message = (
-        f"📊 {symbol}\n"
-        f"{'🟢 Signal: BUY' if signal == 'BUY' else '🔴 Signal: SELL'}\n"
-        f"💰 Price: {price}\n"
-        f"🎯 Qty: {qty}\n"
-        f"❌ SL: {sl}\n"
-        f"✅ TP: {tp}\n"
-        f"🕒 Time: {time_now}"
-    )
-    return message
-
-# 🔍 Data fetch
-def fetch_klines(symbol, interval):
-    try:
-        data = client.get_kline(symbol=symbol, kline_type=interval, limit=100)
-        df = pd.DataFrame(data, columns=["time", "open", "close", "high", "low", "volume", "turnover"])
-        df = df.astype(float)
-        df["time"] = pd.to_datetime(pd.to_numeric(df["time"]), unit="s")
-        return df
-    except Exception as e:
-        print(f"Error fetching {symbol}: {e}")
-        return None
-
+# 📈 Top 10 coins by volume
 def get_top_10_symbols():
-    try:
-        response = client.get_all_tickers()
-        print("KuCoin Ticker Response:", response)  # Debug के लिए
+    tickers = client.get_all_tickers()["ticker"]
+    sorted_tickers = sorted(tickers, key=lambda x: float(x["volValue"]), reverse=True)
+    top_symbols = [t["symbol"] for t in sorted_tickers if "USDT" in t["symbol"]][:10]
+    return top_symbols
 
-        if "ticker" in response:
-            tickers = response["ticker"]
-            sorted_tickers = sorted(tickers, key=lambda x: float(x["volValue"]), reverse=True)
-            top_symbols = [t["symbol"] for t in sorted_tickers if "-USDT" in t["symbol"]][:10]
-            return top_symbols
-        else:
-            print("❌ 'ticker' key not found in response.")
-            return []
-    except Exception as e:
-        print(f"❌ Error in get_top_10_symbols(): {e}")
-        return []
-
-# 🔁 Main loop
+# 🚀 Run bot
 def run_bot():
-    symbols = get_top_10_symbols()
-    for symbol in symbols:
-        df_4h = fetch_klines(symbol, "4hour")
-        df_15m = fetch_klines(symbol, "15min")
-        df_5m = fetch_klines(symbol, "5min")
-
-        if df_4h is None or df_15m is None or df_5m is None:
-            continue
-
-        for df in [df_4h, df_15m, df_5m]:
-            df = heikin_ashi(df)
-
-        signal_4h = check_signal(df_4h)
-        signal_15m = check_signal(df_15m)
-        signal_5m = check_signal(df_5m)
-
-        if signal_4h and signal_4h == signal_15m == signal_5m:
-            price = float(df_5m["close"].iloc[-1])
-            message = trade_details(symbol, signal_5m, price)
-            send_telegram_message(message)
-        time.sleep(1)
-
-# 🌐 Flask server for Render
-@app.route("/")
-def home():
-    return "✅ Crypto bot is running!"
-
-if __name__ == "__main__":
     while True:
-        run_bot()
-        time.sleep(300)  # हर 5 मिनट में दोबारा चलाएं
+        print("🔄 Scanning market...")
+        symbols = get_top_10_symbols()
+
+        for symbol in symbols:
+            try:
+                # Check 4H ➝ 15m ➝ 5m candles
+                df_4h = fetch_ohlcv(symbol, "4hour")
+                if check_signal(heikin_ashi(df_4h)) is None:
+                    continue
+
+                df_15m = fetch_ohlcv(symbol, "15min")
+                if check_signal(heikin_ashi(df_15m)) is None:
+                    continue
+
+                df_5m = fetch_ohlcv(symbol, "5min")
+                ha = heikin_ashi(df_5m)
+                signal = check_signal(ha)
+
+                if signal:
+                    price = df_5m["close"].iloc[-1]
+                    sl, tp = calculate_sl_tp(df_5m, signal)
+                    qty = calculate_qty(price)
+                    send_telegram_alert(symbol, signal, price, qty, sl, tp)
+
+            except Exception as e:
+                print(f"❌ Error for {symbol}: {e}")
+
+        time.sleep(300)  # Wait 5 min
+
+# ✅ Start bot
+if __name__ == "__main__":
+    run_bot()
