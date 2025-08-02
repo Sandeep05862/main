@@ -2,7 +2,10 @@ flask
 requests
 pandas
 numpy
-ta
+ta==0.11.0
 kucoin-python
 gunicorn
 setuptools
+kucoin-futures==0.1.5
+requests
+pytz
