@@ -4,7 +4,7 @@ pandas
 numpy
 ta==0.11.0
 kucoin-python
+kucoin-futures-python
 gunicorn
 setuptools
 pytz
-kucoin-futures==0.1.5
